@@ -9,25 +9,56 @@
 class rsync::server(
   $use_xinetd = true,
   $address    = '0.0.0.0',
-  $motd_file  = 'UNSET'
+  $motd_file  = 'UNSET',
+  $enable     = true
 ) inherits rsync {
 
   $rsync_fragments = '/etc/rsync.d'
 
   if($use_xinetd) {
     include xinetd
-    xinetd::service { 'rsync':
-      bind        => $address,
-      port        => '873',
-      server      => '/usr/bin/rsync',
-      server_args => '--daemon --config /etc/rsync.conf',
-      require     => Package['rsync'],
+    if $enable {
+      xinetd::service { 'rsync':
+        bind        => $address,
+        port        => '873',
+        server      => '/usr/bin/rsync',
+        server_args => '--daemon --config /etc/rsyncd.conf',
+        require     => Package['rsync'],
+      }
+    } else {
+      xinetd::service { 'rsync':
+        bind        => $address,
+        port        => '873',
+        server      => '/usr/bin/rsync',
+        server_args => '--daemon --config /etc/rsyncd.conf',
+        disable     => 'yes',
+        require     => Package['rsync'],
+      }
     }
   } else {
-    service { 'rsync':
-      ensure    => running,
-      enable    => true,
-      subscribe => Exec['compile fragments'],
+    if $enable {
+      if $::operatingsystem == 'Debian' {
+        exec { 'enable rsync':
+          command => 'sed -i "s/RSYNC_ENABLE=false/RSYNC_ENABLE=true/" /etc/default/rsync',
+          path    => [ '/bin', '/usr/bin' ],
+          unless  => 'grep "RSYNC_ENABLE=true" /etc/default/rsync',
+          require => Class['rsync'],
+          before  => Service['rsync'],
+        }
+      }
+      service { 'rsync':
+        ensure     => running,
+        enable     => true,
+        hasrestart => true,
+        subscribe  => Exec['compile fragments'],
+        require    => Class['rsync'],
+      }
+    } else {
+      service { 'rsync':
+        ensure    => stopped,
+        enable    => false,
+        require   => Class['rsync'],
+      }
     }
   }
 
@@ -51,8 +82,17 @@ class rsync::server(
   # which happens with cobbler systems by default
   exec { 'compile fragments':
     refreshonly => true,
-    command     => "ls ${rsync_fragments}/frag-* 1>/dev/null 2>/dev/null && if [ $? -eq 0 ]; then cat ${rsync_fragments}/header ${rsync_fragments}/frag-* > /etc/rsync.conf; else cat ${rsync_fragments}/header > /etc/rsync.conf; fi; $(exit 0)",
+    command     => "ls ${rsync_fragments}/frag-* 1>/dev/null 2>/dev/null && if [ $? -eq 0 ]; then cat ${rsync_fragments}/header ${rsync_fragments}/frag-* > /etc/rsyncd.conf; else cat ${rsync_fragments}/header > /etc/rsyncd.conf; fi; $(exit 0)",
     subscribe   => File["${rsync_fragments}/header"],
     path        => '/bin:/usr/bin',
+  }
+
+  file { '/etc/rsyncd.conf':
+    ensure  => file,
+    mode    => '0640',
+    owner   => 'root',
+    group   => 'root',
+    require => Exec['compile fragments'],
+    before  => Service['rsync'],
   }
 }

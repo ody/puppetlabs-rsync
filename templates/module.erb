@@ -1,7 +1,7 @@
 # This file is being maintained by Puppet.
 # DO NOT EDIT
 
-[ <%= name %> ]
+[<%= name %>]
 path            = <%= path %>
 read only       = <%= read_only_real %>
 write only      = <%= write_only_real %>
@@ -13,5 +13,4 @@ gid             = <%= gid %>
 max connections = <%= max_connections %>
 <% if Integer(max_connections) > 0 %>lock file =     <%= lock_file %><% end %>
 <% if comment != :undef %>comment               = <%= comment %><% end %>
-
 
